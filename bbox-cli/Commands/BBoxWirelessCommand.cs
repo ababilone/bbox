@@ -25,7 +25,6 @@ namespace BBox.Cli.Commands
                     
                     listCommand.OnExecute(() =>
                     {
-                        
                         var bBoxResult = bboxClient.GetSSIDAsync().Result;
                         if (bBoxResult.Succeed)
                         {
@@ -80,9 +79,9 @@ namespace BBox.Cli.Commands
                     disableCommand.OnExecute(() => { 
                         var bBoxResult = bboxClient.DisableWirelessAsync(WirelessType.Private).Result;
                         if (bBoxResult.Succeed)
-                            logger.LogInformation($"Successfully enabled wireless");
+                            logger.LogInformation($"Successfully disabled wireless");
                         else
-                            logger.LogError($"Error while enabling wireless: {bBoxResult}");
+                            logger.LogError($"Error while disabling wireless: {bBoxResult}");
                     
                         return bBoxResult.Succeed ? 0 : 1;
                     });

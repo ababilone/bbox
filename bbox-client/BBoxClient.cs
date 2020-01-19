@@ -56,20 +56,19 @@ namespace BBox.Client
             var authCookie = AuthUtils.GenerateAuthCookie(_authContext);
             _flurlClient.Cookies.Add(CookieName, new Cookie(CookieName, authCookie));
 
-            var apiReply = await SendAsync(Actions.Login(user));
-            var bBoxResult = new BBoxResult(apiReply.Reply);
+            var bBoxResult = await SendAsync(Actions.Login(user));
             
             if (!bBoxResult.Succeed)
                 return bBoxResult;
             
-            var parameters = apiReply.Reply.Actions.FirstOrDefault()?.Callbacks.FirstOrDefault()?.Parameters;
+            var parameters = bBoxResult.Reply.Actions.FirstOrDefault()?.Callbacks.FirstOrDefault()?.Parameters;
             _sessionId = parameters.Id;
             _authContext.Nonce = parameters.Nonce;
             
             return bBoxResult;
         }
 
-        public async Task<ApiReply> SendAsync(params Action[] actions)
+        public async Task<BBoxResult> SendAsync(params Action[] actions)
         {
             if (_authContext == null)
             {
@@ -78,7 +77,9 @@ namespace BBox.Client
                 if (bBoxResult.Succeed)
                     _logger.LogInformation($"Logged in as {User}");
                 else
-                    _logger.LogError($"Error during login as {User}: {bBoxResult.Description}");
+                {
+                    return bBoxResult;
+                }
             }
             
             var requestIndex = NextRequestIndex();
@@ -96,40 +97,56 @@ namespace BBox.Client
             });
 
             var content = await httpResponseMessage.Content.ReadAsStringAsync();
-            return JsonConvert.DeserializeObject<ApiReply>(content);
+            var apiReply = JsonConvert.DeserializeObject<ApiReply>(content);
+            return new BBoxResult(request, apiReply.Reply);
         }
 
-        public async Task<List<AccessPointInfo>> GetAccessPointsAsync()
+        public async Task<BBoxResult<List<AccessPointInfo>>> GetAccessPointsAsync()
         {
-            var apiReply = await SendAsync(Actions.GetValue().AccessPoints());
-            var accessPointInfos = new List<AccessPointInfo>();
-            foreach (var callback in apiReply.Reply.Actions?.FirstOrDefault()?.Callbacks ?? new List<ActionReplyCallback>())
+            var bboxResult = await SendAsync(Actions.GetValue().AccessPoints());
+            var typedBBoxResult = new BBoxResult<List<AccessPointInfo>>(bboxResult);
+
+            if (typedBBoxResult.Succeed)
             {
-                accessPointInfos.Add(new AccessPointInfo
+                var accessPointInfos = new List<AccessPointInfo>();
+                foreach (var callback in typedBBoxResult.Reply.Actions?.FirstOrDefault()?.Callbacks ??
+                                         new List<ActionReplyCallback>())
                 {
-                    Capability = callback.Parameters.Capability,
-                    Metadata = callback.Parameters.Value.AccessPoint
-                });
+                    accessPointInfos.Add(new AccessPointInfo
+                    {
+                        Capability = callback.Parameters.Capability,
+                        Metadata = callback.Parameters.Value.AccessPoint
+                    });
+                }
+
+                typedBBoxResult.Result = accessPointInfos;
             }
 
-            return accessPointInfos;
+            return typedBBoxResult;
         }
 
         public async Task<BBoxResult<List<SSIDInfo>>> GetSSIDAsync()
         {
-            var apiReply = await SendAsync(Actions.GetValue().SSIDs());
+            var bboxResult = await SendAsync(Actions.GetValue().SSIDs());
+            var typedBBoxResult = new BBoxResult<List<SSIDInfo>>(bboxResult);
 
-            var ssidInfos = new List<SSIDInfo>();
-            foreach (var callback in apiReply.Reply.Actions?.FirstOrDefault()?.Callbacks  ?? new List<ActionReplyCallback>())
+            if (typedBBoxResult.Succeed)
             {
-                ssidInfos.Add(new SSIDInfo
+                var ssidInfos = new List<SSIDInfo>();
+                foreach (var callback in typedBBoxResult.Reply.Actions?.FirstOrDefault()?.Callbacks ??
+                                         new List<ActionReplyCallback>())
                 {
-                    Capability = callback.Parameters.Capability,
-                    Metadata = callback.Parameters.Value.SSID
-                });
+                    ssidInfos.Add(new SSIDInfo
+                    {
+                        Capability = callback.Parameters.Capability,
+                        Metadata = callback.Parameters.Value.SSID
+                    });
+                }
+
+                typedBBoxResult.Result = ssidInfos;
             }
 
-            return new BBoxResult<List<SSIDInfo>>(apiReply.Reply, ssidInfos);
+            return typedBBoxResult;
         }
 
         private async Task<BBoxResult> EnableDisableWirelessAsync(WirelessType wirelessType, Func<SetValueActionBuilder.SetValueEnableActionBuilder, Action> setValueEnableActionBuilderAction)
@@ -142,22 +159,22 @@ namespace BBox.Client
 
             var actions = new List<Action>();
 
-            var accessPointsInfos = await GetAccessPointsAsync();
+            var accessPointsInfos = (await GetAccessPointsAsync()).Result;
+            var ssidInfos = (await GetSSIDAsync()).Result;
             foreach (var accessPoint in accessPointsInfos.Where(info =>
                 privateAccessPointAliases.Contains(info.Metadata.Alias)))
             {
-                actions.Add(
-                    setValueEnableActionBuilderAction(Actions.SetValue().AccessPoint(accessPoint.Metadata.Uid)));
-                actions.Add(
-                    setValueEnableActionBuilderAction(Actions.SetValue().SSID(accessPoint.Metadata.SSIDReference)));
+                actions.Add(setValueEnableActionBuilderAction(Actions.SetValue().AccessPoint(accessPoint.Metadata.Uid)));
+
+                var ssidInfo = ssidInfos.FirstOrDefault(info => info.Metadata.Name == accessPoint.Metadata.SSIDReference);
+                
+                actions.Add(setValueEnableActionBuilderAction(Actions.SetValue().SSID(ssidInfo.Metadata.Uid)));
             }
 
             actions.Add(setValueEnableActionBuilderAction(Actions.SetValue().BGCButtons("GuiEnable_5G")));
             actions.Add(setValueEnableActionBuilderAction(Actions.SetValue().BGCButtons("GuiEnable_2G4")));
             
-            var apiReply = await SendAsync(actions.ToArray());
-            
-            return new BBoxResult(apiReply.Reply);
+            return await SendAsync(actions.ToArray());
         }
 
         public Task<BBoxResult> EnableWirelessAsync(WirelessType wirelessType) => EnableDisableWirelessAsync(wirelessType, builder => builder.Enabled());

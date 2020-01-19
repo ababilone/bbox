@@ -15,5 +15,10 @@ namespace BBox.Client.Models
         
         [JsonProperty("xpath")]
         public string XPath { get; set; }
+
+        public override string ToString()
+        {
+            return string.IsNullOrWhiteSpace(XPath) ? Method : $"{Method} @ {XPath}";
+        }
     }
 }

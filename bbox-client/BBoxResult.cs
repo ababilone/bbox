@@ -1,6 +1,5 @@
-using System.Collections.Generic;
-using System.Linq;
 using System.Text;
+using BBox.Client.Helpers;
 using BBox.Client.Models;
 
 namespace BBox.Client
@@ -9,51 +8,40 @@ namespace BBox.Client
     {
         public T Result { get; set; }
 
-        public BBoxResult(Reply reply) : base(reply)
+        public BBoxResult(BBoxResult bboxResult) : base(bboxResult.Request, bboxResult.Reply)
         {
-        }
-        
-        public BBoxResult(Reply reply, T result) : base(reply)
-        {
-            Result = result;
+            
         }
     }
     
     public class BBoxResult
     {
-        private BBoxResult(ActionReply actionReply) : this(actionReply.Error)
+        public Request Request { get; }
+        public Reply Reply { get; }
+
+        public BBoxResult(Request request, Reply reply)
         {
-        }
-        
-        public BBoxResult(Reply reply) : this(reply.Error, reply.Actions.Select(actionReply => new BBoxResult(actionReply)).ToArray())
-        {
-            
+            Request = request;
+            Reply = reply;
+            Succeed = reply.Error.IsSucceed();
         }
 
-        private BBoxResult(Result result, params BBoxResult[] innerResults)
-        {
-            Code = result.Code;
-            Description = result.Description;
-            Succeed = result.Code == 16777216 && result.Description == "Ok";
-            InnerResults = innerResults.ToList();
-        }
-        
-        public int Code { get; }
-        public string Description { get; }
         public bool Succeed { get; }
-        public List<BBoxResult> InnerResults { get; }
 
         public override string ToString()
         {
-            var stringBuilder = new StringBuilder(Description);
-            
-            foreach (var innerResult in InnerResults)
+            var stringBuilder = new StringBuilder();
+
+            foreach (var actionReply in Reply.Actions)
             {
-                stringBuilder.AppendLine();
-                stringBuilder.Append(innerResult);
+                if (actionReply.IsError())
+                {
+                    var action = Request.GetAction(actionReply.Id);
+                    stringBuilder.AppendLine($"{action} > {actionReply.Error.Description}");
+                }
             }
             
-            return stringBuilder.ToString();
+            return stringBuilder.ToString().Trim();
         }
     }
 }

@@ -10,8 +10,8 @@ namespace BBox.Client
     {
         Task<BBoxResult> LoginAsync();
         Task<BBoxResult> LoginAsync(string user, string password);
-        Task<ApiReply> SendAsync(params Action[] actions);
-        Task<List<AccessPointInfo>> GetAccessPointsAsync();
+        Task<BBoxResult> SendAsync(params Action[] actions);
+        Task<BBoxResult<List<AccessPointInfo>>> GetAccessPointsAsync();
         Task<BBoxResult<List<SSIDInfo>>> GetSSIDAsync();
         Task<BBoxResult> EnableWirelessAsync(WirelessType wirelessType);
         Task<BBoxResult> DisableWirelessAsync(WirelessType wirelessType);
